@@ -43,7 +43,7 @@ typedef struct {
     oscc_command_brake_data_s brake_cmd;
     oscc_command_throttle_data_s throttle_cmd;
     oscc_command_steering_data_s steering_cmd;
-    CanBusT* canbus;
+    CanBusT canbus;
     int can_channel;
 } oscc_interface_data_s;
 
@@ -51,7 +51,7 @@ typedef struct {
     oscc_report_chassis_state_1_s chassis_state_1;
     oscc_report_chassis_state_2_s chassis_state_2;
     oscc_report_chassis_state_3_s chassis_state_3;
-    CanBusT* canbus;
+    CanBusT canbus;
     int can_channel;
 } oscc_interface_status_data_s;
 
@@ -87,7 +87,7 @@ static int oscc_can_write(long id, void* msg, unsigned int dlc) {
     int return_code = ERROR;
     
     if (oscc != NULL) {
-        int ret = can_write(oscc->canbus, id, msg, dlc);
+        int ret = can_write(&(oscc->canbus), id, msg, dlc);
         if (ret != -1) {
             return_code = NOERR;
         }
@@ -107,15 +107,23 @@ static int oscc_can_write(long id, void* msg, unsigned int dlc) {
 //
 // *****************************************************
 
-int oscc_init_can(int channel) {
+int oscc_init_can_impl(int channel, bool virtual) {
     int return_code = ERROR;
     char can_name[255];
-    sprintf(can_name, "vcan%d", channel );
-    int ret = can_open(oscc_interface_data.canbus, can_name);
+    sprintf(can_name, (virtual ? "vcan%d" : "can%d"), channel);
+    int ret = can_open(&(oscc_interface_data.canbus), can_name);
     if(ret == 0){
         return_code == NOERR;
     }
     return return_code;
+}
+
+int oscc_init_can(int channel) {
+    return oscc_init_can_impl(channel, false);
+}
+
+int oscc_init_virtual_can(int channel) {
+    return oscc_init_can_impl(channel, true);
 }
 
 // *****************************************************
@@ -383,7 +391,7 @@ int oscc_interface_init_no_defaults(int channel) {
 // *****************************************************
 void oscc_interface_close() {
     if (oscc != NULL) {
-        can_close(oscc->canbus);
+        can_close(&(oscc->canbus));
     }
     oscc = NULL;
 }
@@ -605,7 +613,7 @@ int oscc_interface_update_status(oscc_status_s* status) {
     int return_code = ERROR;
     
     if (oscc != NULL) {
-        CanFrame res = can_read(oscc->canbus);
+        CanFrame res = can_read(&(oscc->canbus));
         if (res.err_no == 0) {
             return_code = NOERR;
             oscc_interface_check_for_operator_override(status, res.id , res.data);
@@ -624,7 +632,7 @@ int oscc_interface_read_vehicle_status_from_bus(
     if (oscc != NULL) {
         unsigned int msg_flag = 0;
         unsigned long tstamp = 0;
-        CanFrame res = can_read(oscc->canbus);
+        CanFrame res = can_read(&(oscc->canbus));
         if (res.err_no == 0) {
             return_code = NOERR;
             oscc_interface_parse_vehicle_state_info(
